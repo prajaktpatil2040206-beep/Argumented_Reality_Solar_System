@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Simple Camera + 3D Sphere</title>
+    <title>3D Earth with Orientation & Zoom</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
             font-family: Arial, sans-serif;
+            touch-action: none; /* prevent page scroll/zoom */
         }
         #video-bg {
             position: fixed;
@@ -26,7 +27,7 @@
             width: 100%;
             height: 100%;
             z-index: 1;
-            pointer-events: none; /* allow touches to pass through if needed */
+            pointer-events: none; /* allow touches to pass for zoom? we'll handle zoom on canvas */
         }
         #message {
             position: absolute;
@@ -46,14 +47,30 @@
             border: 1px solid rgba(255,255,255,0.3);
             pointer-events: none;
         }
+        #orient-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 3;
+            background: white;
+            border: none;
+            border-radius: 30px;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: none; /* hidden by default, shown if orientation not granted */
+        }
     </style>
 </head>
 <body>
     <video id="video-bg" autoplay playsinline></video>
     <div id="canvas-container"></div>
-    <div id="message">🌍 Earth is floating in front of you!</div>
+    <button id="orient-btn">Enable Motion Sensors</button>
+    <div id="message">🌍 Rotate your phone to see 3D effect. Pinch to zoom.</div>
 
-    <!-- Import Three.js -->
+    <!-- Import Three.js and required extras -->
     <script type="importmap">
         {
             "imports": {
@@ -84,10 +101,12 @@
         // --- 2. Setup Three.js scene (transparent) ---
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        // No background – it will be transparent, revealing the video behind
+        // No background – transparent to show video
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 0, 2); // camera at origin, looking forward
+        // Initially place camera at origin looking along -Z
+        camera.position.set(0, 0, 0);
+        // We will rotate the world or the object relative to camera
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -109,22 +128,126 @@
             map: textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg')
         });
         const earth = new THREE.Mesh(geometry, earthMaterial);
-        // Position it in front of the camera (in world space)
-        earth.position.set(0, 0, -1); // 1 meter in front (negative Z is forward in Three.js)
+        // Place it in front of the camera at a fixed distance
+        earth.position.set(0, 0, -2); // 2 meters away along -Z (into the screen)
         scene.add(earth);
 
-        // --- 5. Animation loop ---
+        // --- 5. Device Orientation handling ---
+        // We'll rotate the entire scene (or a container) opposite to device orientation
+        // to make Earth appear fixed in space.
+        const group = new THREE.Group();
+        group.add(earth);
+        scene.add(group); // we will rotate this group based on device orientation
+
+        let orientationAvailable = false;
+        const orientBtn = document.getElementById('orient-btn');
+
+        // Convert device orientation to Three.js rotation (Euler or Quaternion)
+        function handleOrientation(event) {
+            // event.alpha, beta, gamma in degrees
+            // alpha = rotation around z-axis (0 to 360, 0 = north)
+            // beta = front-back tilt (-180 to 180)
+            // gamma = left-right tilt (-90 to 90)
+            // We need to map these to a coordinate system where Y is up, X right, Z towards camera.
+            // Standard mapping: 
+            // - Rotate around Y (yaw) by -alpha (since alpha increases clockwise)
+            // - Rotate around X (pitch) by -beta
+            // - Rotate around Z (roll) by gamma
+            // But order matters. We'll use quaternion for better stability.
+            
+            const alpha = THREE.MathUtils.degToRad(event.alpha || 0);
+            const beta = THREE.MathUtils.degToRad(event.beta || 0);
+            const gamma = THREE.MathUtils.degToRad(event.gamma || 0);
+
+            // Create quaternions for each axis (intrinsic rotations)
+            const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -alpha);
+            const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -beta);
+            const qRoll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), gamma);
+            
+            // Combine: first yaw, then pitch, then roll? Order depends on device convention.
+            // Typically, for AR, we want the camera to rotate opposite to device.
+            // We'll combine as roll * pitch * yaw (intrinsic, roll then pitch then yaw?).
+            // Let's use a standard approach from online examples:
+            const orientation = new THREE.Quaternion()
+                .multiply(qYaw)
+                .multiply(qPitch)
+                .multiply(qRoll);
+            
+            // Apply inverse to the group so Earth appears fixed
+            group.quaternion.copy(orientation).invert();
+            
+            orientationAvailable = true;
+            if (orientBtn) orientBtn.style.display = 'none';
+        }
+
+        // Request permission for DeviceOrientation (iOS 13+)
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            // iOS 13+ requires permission
+            orientBtn.style.display = 'block';
+            orientBtn.addEventListener('click', () => {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
+                        } else {
+                            alert('Permission denied for motion sensors');
+                        }
+                    })
+                    .catch(console.error);
+            });
+        } else {
+            // Non-iOS or older iOS – just add listener
+            window.addEventListener('deviceorientation', handleOrientation);
+            orientBtn.style.display = 'none';
+        }
+
+        // Fallback: if no orientation after a few seconds, show message
+        setTimeout(() => {
+            if (!orientationAvailable) {
+                document.getElementById('message').innerHTML = '⚠️ No motion sensors detected. Object is fixed.';
+            }
+        }, 3000);
+
+        // --- 6. Pinch zoom ---
+        let initialDistance = null;
+        let initialScale = 1;
+
+        container.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                const dx = e.touches[0].pageX - e.touches[1].pageX;
+                const dy = e.touches[0].pageY - e.touches[1].pageY;
+                initialDistance = Math.sqrt(dx*dx + dy*dy);
+                initialScale = earth.scale.x;
+            }
+        }, { passive: false });
+
+        container.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && initialDistance) {
+                const dx = e.touches[0].pageX - e.touches[1].pageX;
+                const dy = e.touches[0].pageY - e.touches[1].pageY;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                const scale = initialScale * (distance / initialDistance);
+                earth.scale.set(scale, scale, scale);
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        container.addEventListener('touchend', () => {
+            initialDistance = null;
+        });
+
+        // --- 7. Animation loop ---
         function animate() {
             requestAnimationFrame(animate);
 
-            // Rotate Earth slowly
+            // Rotate Earth slowly on its own axis for extra effect
             earth.rotation.y += 0.005;
 
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- 6. Handle window resize ---
+        // --- 8. Handle window resize ---
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
