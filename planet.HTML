@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Markerless AR Earth</title>
+    <title>Markerless AR Earth (Camera Fixed)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, Helvetica, sans-serif; }
         #info {
@@ -23,7 +23,7 @@
 <body>
     <div id="info">🔍 Move your phone slowly to detect a surface</div>
 
-    <!-- Import Three.js and ARButton -->
+    <!-- Import maps for Three.js -->
     <script type="importmap">
         {
             "imports": {
@@ -39,17 +39,22 @@
 
         // --- Setup scene, camera, renderer ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x111111); // dark background until camera starts
-
+        // IMPORTANT: Do NOT set a background color! Let the camera feed show through.
+        
         const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true, 
+            alpha: true  // Must be true to see the camera background
+        });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.xr.enabled = true;
+        // Optional: set clear color to fully transparent (default is 0x00000000 with alpha:true)
+        renderer.setClearColor(0x000000, 0); 
         document.body.appendChild(renderer.domElement);
 
-        // --- Add some ambient light ---
+        // --- Lighting ---
         const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
         scene.add(light);
 
@@ -60,10 +65,10 @@
             map: textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg')
         });
         const earth = new THREE.Mesh(geometry, earthMaterial);
-        earth.visible = false; // hide until we have a place to put it
+        earth.visible = false;
         scene.add(earth);
 
-        // --- Optional: add a reticle to show where the Earth will be placed ---
+        // --- Reticle (visual indicator of detected surface) ---
         const reticleGeometry = new THREE.RingGeometry(0.15, 0.2, 32);
         const reticleMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
         const reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
@@ -82,27 +87,18 @@
         // --- Hit test variables ---
         let hitTestSource = null;
         let isHitTestReady = false;
-        let reticlePlaced = false;
 
-        // --- When the AR session starts ---
+        // --- When AR session starts ---
         renderer.xr.addEventListener('sessionstart', async () => {
             const session = renderer.xr.getSession();
-            
-            // Create a reference space that tracks the viewer's pose
             const viewerSpace = await session.requestReferenceSpace('viewer');
-            
-            // Request hit test source for the viewer space
             hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
             isHitTestReady = true;
-
-            // We also need a reference space for placing objects
-            // This will be used later when we get hit test results
         });
 
-        // --- Animation loop (runs every frame) ---
+        // --- Animation loop ---
         renderer.setAnimationLoop((timestamp, frame) => {
             if (frame) {
-                // Get the reference space for the session
                 const referenceSpace = renderer.xr.getReferenceSpace();
 
                 if (isHitTestReady && hitTestSource) {
@@ -117,13 +113,11 @@
                             reticle.visible = true;
                             reticle.position.copy(pose.transform.position);
                             
-                            // If reticle is stable, you could auto-place, but we'll wait for a tap
-                            // For simplicity, we place the Earth immediately on first hit
+                            // Place Earth on first detection (or keep it at reticle position)
                             if (!earth.visible) {
                                 earth.visible = true;
                                 earth.position.copy(pose.transform.position);
-                                // Slightly above surface so it sits on it
-                                earth.position.y += 0.2; // half of sphere height (radius=0.2)
+                                earth.position.y += 0.2; // lift half sphere so it sits on surface
                             }
                         }
                     } else {
@@ -132,7 +126,7 @@
                 }
             }
 
-            // Rotate the Earth if visible
+            // Rotate Earth
             if (earth.visible) {
                 earth.rotation.y += 0.005;
             }
@@ -140,7 +134,7 @@
             renderer.render(scene, camera);
         });
 
-        // --- Handle window resize ---
+        // --- Resize handler ---
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
