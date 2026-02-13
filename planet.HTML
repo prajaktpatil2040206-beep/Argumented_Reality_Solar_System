@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Markerless AR Earth</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, Helvetica, sans-serif; }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            pointer-events: none;
+            z-index: 10;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">🔍 Move your phone slowly to detect a surface</div>
+
+    <!-- Import Three.js and ARButton -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { ARButton } from 'three/addons/webxr/ARButton.js';
+
+        // --- Setup scene, camera, renderer ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111); // dark background until camera starts
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.xr.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // --- Add some ambient light ---
+        const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+        scene.add(light);
+
+        // --- Create Earth sphere ---
+        const geometry = new THREE.SphereGeometry(0.2, 64, 64);
+        const textureLoader = new THREE.TextureLoader();
+        const earthMaterial = new THREE.MeshStandardMaterial({
+            map: textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg')
+        });
+        const earth = new THREE.Mesh(geometry, earthMaterial);
+        earth.visible = false; // hide until we have a place to put it
+        scene.add(earth);
+
+        // --- Optional: add a reticle to show where the Earth will be placed ---
+        const reticleGeometry = new THREE.RingGeometry(0.15, 0.2, 32);
+        const reticleMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+        const reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
+        reticle.rotation.x = -Math.PI / 2; // lie flat
+        reticle.visible = false;
+        scene.add(reticle);
+
+        // --- WebXR setup ---
+        const button = ARButton.createButton(renderer, {
+            requiredFeatures: ['hit-test'],
+            optionalFeatures: ['dom-overlay'],
+            domOverlay: { root: document.body }
+        });
+        document.body.appendChild(button);
+
+        // --- Hit test variables ---
+        let hitTestSource = null;
+        let isHitTestReady = false;
+        let reticlePlaced = false;
+
+        // --- When the AR session starts ---
+        renderer.xr.addEventListener('sessionstart', async () => {
+            const session = renderer.xr.getSession();
+            
+            // Create a reference space that tracks the viewer's pose
+            const viewerSpace = await session.requestReferenceSpace('viewer');
+            
+            // Request hit test source for the viewer space
+            hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+            isHitTestReady = true;
+
+            // We also need a reference space for placing objects
+            // This will be used later when we get hit test results
+        });
+
+        // --- Animation loop (runs every frame) ---
+        renderer.setAnimationLoop((timestamp, frame) => {
+            if (frame) {
+                // Get the reference space for the session
+                const referenceSpace = renderer.xr.getReferenceSpace();
+
+                if (isHitTestReady && hitTestSource) {
+                    const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+                    if (hitTestResults.length > 0) {
+                        const hit = hitTestResults[0];
+                        const pose = hit.getPose(referenceSpace);
+
+                        if (pose) {
+                            // Update reticle position
+                            reticle.visible = true;
+                            reticle.position.copy(pose.transform.position);
+                            
+                            // If reticle is stable, you could auto-place, but we'll wait for a tap
+                            // For simplicity, we place the Earth immediately on first hit
+                            if (!earth.visible) {
+                                earth.visible = true;
+                                earth.position.copy(pose.transform.position);
+                                // Slightly above surface so it sits on it
+                                earth.position.y += 0.2; // half of sphere height (radius=0.2)
+                            }
+                        }
+                    } else {
+                        reticle.visible = false;
+                    }
+                }
+            }
+
+            // Rotate the Earth if visible
+            if (earth.visible) {
+                earth.rotation.y += 0.005;
+            }
+
+            renderer.render(scene, camera);
+        });
+
+        // --- Handle window resize ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
