@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>🌍 AR Solar System – Sensor‑based 3D</title>
+    <title>True 3D AR with Sensors & Object Tracking</title>
     <style>
-        /* --- your original styles, plus AR video layer --- */
         body {
             margin: 0;
             overflow: hidden;
-            font-family: 'Segoe UI', 'Avenir', 'Inter', system-ui, sans-serif;
-            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none; /* prevent browser scroll/pinch */
+            background-color: black;
         }
-        /* Camera video background */
-        #ar-video {
+        #video-bg {
             position: fixed;
             top: 0;
             left: 0;
@@ -21,9 +20,8 @@
             height: 100%;
             object-fit: cover;
             z-index: 0;
-            display: none; /* hidden until AR mode */
+            pointer-events: none;
         }
-        /* Three.js canvas (will be transparent in AR mode) */
         #canvas-container {
             position: fixed;
             top: 0;
@@ -31,606 +29,309 @@
             width: 100%;
             height: 100%;
             z-index: 1;
-            pointer-events: auto; /* allow clicks */
+            pointer-events: none; /* canvas doesn't block touches, we handle on container */
         }
-        /* loading screen */
-        #loading-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: radial-gradient(circle at 30% 30%, #0b0f2a, #030514);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            transition: opacity 1.5s cubic-bezier(0.2, 0.9, 0.3, 1);
-            pointer-events: none;
-            backdrop-filter: blur(2px);
-        }
-        #loading-screen.fade-out { opacity: 0; }
-        .loader-container {
-            background: rgba(20, 30, 50, 0.3);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(100, 180, 255, 0.3);
-            border-radius: 40px;
-            padding: 4px;
-            width: 260px;
-            box-shadow: 0 0 30px rgba(0, 160, 255, 0.3);
-        }
-        .loader-bar {
-            height: 8px;
-            background: linear-gradient(90deg, #6a5acd, #00bfff, #40e0d0);
-            border-radius: 40px;
-            width: 0%;
-            transition: width 0.3s ease;
-            box-shadow: 0 0 20px #00bfff;
-        }
-        .loading-text {
-            margin-top: 20px;
-            font-size: 1.6rem;
-            font-weight: 300;
-            letter-spacing: 6px;
-            text-transform: uppercase;
-            background: linear-gradient(135deg, #b0e0ff, #ffffff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 0 15px #00bfff;
-        }
-        .loading-sub {
-            color: #aaccff;
-            font-size: 0.9rem;
-            opacity: 0.8;
-            margin-top: 8px;
-        }
-        /* UI panel - glassmorphism */
-        #ui-panel {
-            position: fixed;
+        #controls {
+            position: absolute;
             bottom: 30px;
-            left: 30px;
-            right: 30px;
+            left: 0;
+            right: 0;
             display: flex;
-            flex-wrap: wrap;
             justify-content: center;
             gap: 15px;
-            z-index: 100;
+            z-index: 2;
             pointer-events: none;
         }
-        .glass-card {
-            background: rgba(10, 20, 40, 0.3);
-            backdrop-filter: blur(15px);
-            -webkit-backdrop-filter: blur(15px);
-            border: 1px solid rgba(100, 180, 255, 0.25);
-            border-radius: 50px;
-            padding: 12px 24px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 180, 255, 0.2);
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            align-items: center;
+        .btn {
             pointer-events: auto;
-            transition: transform 0.2s, border-color 0.3s;
+            background: rgba(30, 30, 40, 0.8);
+            backdrop-filter: blur(12px);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+            transition: 0.2s;
+            border: 1px solid rgba(255,215,0,0.3);
+            text-shadow: 0 2px 4px black;
         }
-        .glass-card:hover {
-            border-color: rgba(100, 200, 255, 0.7);
-            box-shadow: 0 0 30px rgba(0, 200, 255, 0.3);
+        .btn:active {
+            transform: scale(0.96);
+            background: rgba(60, 60, 80, 0.9);
         }
-        .ui-btn {
-            background: transparent;
-            border: none;
-            color: #d0e4ff;
-            font-size: 1.2rem;
-            cursor: pointer;
-            padding: 8px 16px;
-            border-radius: 40px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.2s;
-            font-weight: 400;
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 3;
+            background: rgba(0,0,0,0.6);
             backdrop-filter: blur(5px);
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.1);
+            color: #ffd966;
+            padding: 8px 18px;
+            border-radius: 40px;
+            font-size: 14px;
+            border: 1px solid #ffd96655;
+            pointer-events: none;
         }
-        .ui-btn:hover {
-            background: rgba(80, 160, 255, 0.3);
-            color: white;
-            border-color: #5cb0ff;
-            transform: scale(1.05);
-            box-shadow: 0 0 15px #00bfff;
-        }
-        .ui-btn.active {
-            background: rgba(0, 160, 255, 0.5);
-            color: white;
-            border-color: #fff;
-        }
-        .slider-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #b0e0ff;
-            font-size: 0.9rem;
-        }
-        input[type=range] {
-            width: 100px;
-            height: 4px;
-            background: rgba(200, 220, 255, 0.2);
-            border-radius: 5px;
-            -webkit-appearance: none;
-        }
-        input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #7ec8ff;
-            box-shadow: 0 0 10px #00bfff;
-            cursor: pointer;
-            border: 2px solid white;
-        }
-        .info-badge {
-            position: fixed;
+        #orient-btn {
+            position: absolute;
             top: 20px;
             right: 20px;
-            background: rgba(0, 10, 20, 0.4);
-            backdrop-filter: blur(10px);
+            z-index: 3;
+            background: #1e1e2f;
+            color: white;
+            border: 2px solid gold;
             border-radius: 40px;
             padding: 12px 24px;
-            border-left: 4px solid #00bfff;
-            color: #eef5ff;
-            font-size: 0.95rem;
-            z-index: 200;
-            border: 1px solid rgba(255,255,255,0.15);
-            box-shadow: 0 5px 20px rgba(0,0,0,0.6);
-            pointer-events: none;
-            letter-spacing: 1px;
-        }
-        #planet-info-panel {
-            position: fixed;
-            top: 100px;
-            left: 30px;
-            background: rgba(8, 15, 30, 0.7);
-            backdrop-filter: blur(20px);
-            border-radius: 30px;
-            padding: 20px 28px;
-            border: 1px solid rgba(80, 180, 255, 0.4);
-            color: white;
-            max-width: 260px;
-            transform: translateX(-20px);
-            opacity: 0;
-            transition: all 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
-            pointer-events: none;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.6), 0 0 30px rgba(0,180,255,0.2);
-            z-index: 300;
-        }
-        #planet-info-panel.visible {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        #planet-name {
-            font-size: 2rem;
-            font-weight: 300;
-            margin-bottom: 5px;
-            background: linear-gradient(135deg, #c8e8ff, #ffffff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .planet-detail {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            font-size: 0.95rem;
-        }
-        .planet-detail span:first-child { opacity: 0.7; }
-        .planet-detail span:last-child { font-weight: 400; color: #aad0ff; }
-        /* mobile adjustments */
-        @media (max-width: 700px) {
-            #ui-panel { left: 10px; right: 10px; }
-            .glass-card { padding: 8px 12px; gap: 8px; }
-            .ui-btn { padding: 6px 10px; font-size: 0.9rem; }
-            .info-badge { display: none; }
-        }
-        /* orientation permission button */
-        #orient-permission-btn {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            border: none;
-            border-radius: 40px;
-            padding: 16px 32px;
-            font-size: 1.2rem;
+            font-size: 16px;
             font-weight: bold;
-            color: #111;
-            z-index: 1000;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.5);
-            display: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.7);
+            display: none; /* shown only if permission required */
+            pointer-events: auto;
+        }
+        #message {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            right: 20px;
+            text-align: center;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+            padding: 10px 18px;
+            border-radius: 30px;
+            width: fit-content;
+            margin: 0 auto;
+            z-index: 2;
+            font-size: 15px;
+            border: 1px solid rgba(255,255,255,0.2);
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <video id="ar-video" autoplay playsinline></video>
+    <video id="video-bg" autoplay playsinline></video>
     <div id="canvas-container"></div>
-
-    <div id="loading-screen">
-        <div class="loading-text">INITIALIZING UNIVERSE</div>
-        <div class="loader-container">
-            <div class="loader-bar" id="loading-progress"></div>
-        </div>
-        <div class="loading-sub">loading star maps & textures ...</div>
+    
+    <div id="status">🔄 Initializing sensors...</div>
+    <button id="orient-btn">🔘 Enable Motion Sensors</button>
+    <div id="message">Move your phone to see 3D object anchored in real world<br>✋ Pinch to zoom | Drag to move object</div>
+    
+    <div id="controls">
+        <button class="btn" id="recenter-btn">🎯 Recenter Object</button>
+        <button class="btn" id="reset-scale-btn">🔍 Reset Scale</button>
     </div>
 
-    <div class="info-badge" id="hover-info">🌌 FREE ROAM • CLICK PLANET TO ZOOM</div>
-
-    <div id="planet-info-panel">
-        <div id="planet-name">✨ Planet</div>
-        <div class="planet-detail"><span>Diameter</span> <span id="planet-diameter">-</span></div>
-        <div class="planet-detail"><span>Distance from Sun</span> <span id="planet-distance">-</span></div>
-        <div class="planet-detail"><span>Orbit speed</span> <span id="planet-orbitspeed">-</span></div>
-        <div class="planet-detail"><span>Surface</span> <span id="planet-type">-</span></div>
-    </div>
-
-    <div id="ui-panel">
-        <div class="glass-card">
-            <button class="ui-btn" id="reset-view">🔄 RESET</button>
-            <button class="ui-btn" id="toggle-orbits">🌀 ORBITS</button>
-            <button class="ui-btn" id="toggle-labels">🏷️ LABELS</button>
-            <button class="ui-btn" id="toggle-ar">🥽 AR MODE</button>
-            <div class="slider-container">
-                <span>⏩</span>
-                <input type="range" id="speed-slider" min="0" max="2" step="0.1" value="1">
-            </div>
-            <button class="ui-btn" id="pause-play">⏸️</button>
-        </div>
-    </div>
-
-    <button id="orient-permission-btn">Enable Motion Sensors</button>
-
-    <!-- Import maps -->
+    <!-- Import maps and libraries -->
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js"
             }
         }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-        import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+        import { OrbitControls } from 'https://unpkg.com/three@0.128.0/examples/jsm/controls/OrbitControls.js'; // for additional control (not used directly but we keep)
 
-        // --- setup loading manager ---
-        const loadingManager = new THREE.LoadingManager();
-        const progressBar = document.getElementById('loading-progress');
-        loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
-            const percent = (itemsLoaded / itemsTotal) * 100;
-            progressBar.style.width = percent + '%';
-        };
-        loadingManager.onLoad = () => {
-            setTimeout(() => {
-                document.getElementById('loading-screen').classList.add('fade-out');
-            }, 800);
-        };
-
-        // --- scene setup ---
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050b1a); // will be overridden in AR mode
-
-        // camera
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 30, 80);
-        
-        // renderers
-        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        renderer.toneMapping = THREE.ReinhardToneMapping;
-        renderer.toneMappingExposure = 1.2;
-        document.getElementById('canvas-container').appendChild(renderer.domElement);
-
-        // css2 renderer for labels
-        const labelRenderer = new CSS2DRenderer();
-        labelRenderer.setSize(window.innerWidth, window.innerHeight);
-        labelRenderer.domElement.style.position = 'absolute';
-        labelRenderer.domElement.style.top = '0px';
-        labelRenderer.domElement.style.left = '0px';
-        labelRenderer.domElement.style.pointerEvents = 'none';
-        document.getElementById('canvas-container').appendChild(labelRenderer.domElement);
-
-        // controls
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.autoRotate = false;
-        controls.enableZoom = true;
-        controls.zoomSpeed = 1.2;
-        controls.rotateSpeed = 0.8;
-        controls.maxDistance = 300;
-        controls.minDistance = 10;
-        controls.target.set(0, 0, 0);
-
-        // --- lighting ---
-        const ambientLight = new THREE.AmbientLight(0x404060);
-        scene.add(ambientLight);
-
-        const sunLight = new THREE.PointLight(0xffeedd, 2, 0, 0);
-        sunLight.position.set(0, 0, 0);
-        sunLight.castShadow = true;
-        sunLight.shadow.mapSize.width = 1024;
-        sunLight.shadow.mapSize.height = 1024;
-        sunLight.shadow.bias = -0.001;
-        scene.add(sunLight);
-
-        const fillLight = new THREE.DirectionalLight(0x446688, 0.5);
-        fillLight.position.set(1, 1, 1);
-        scene.add(fillLight);
-
-        // --- stars (two layers) ---
-        const starsGeometry = new THREE.BufferGeometry();
-        const starsCount = 4000;
-        const positions = new Float32Array(starsCount * 3);
-        const colors = new Float32Array(starsCount * 3);
-        for (let i = 0; i < starsCount; i++) {
-            const r = 300 + Math.random() * 200;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            positions[i*3] = Math.sin(phi) * Math.cos(theta) * r;
-            positions[i*3+1] = Math.sin(phi) * Math.sin(theta) * r;
-            positions[i*3+2] = Math.cos(phi) * r;
-            
-            const intensity = 0.6 + Math.random() * 0.5;
-            colors[i*3] = intensity;
-            colors[i*3+1] = intensity * 0.9;
-            colors[i*3+2] = 1.0;
-        }
-        starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        starsGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        const starsMaterial = new THREE.PointsMaterial({ size: 0.5, vertexColors: true, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
-        const stars = new THREE.Points(starsGeometry, starsMaterial);
-        scene.add(stars);
-
-        const starsGeometry2 = new THREE.BufferGeometry();
-        const positions2 = [];
-        for (let i = 0; i < 1500; i++) {
-            const r = 600 + Math.random() * 400;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            positions2.push(Math.sin(phi) * Math.cos(theta) * r, Math.sin(phi) * Math.sin(theta) * r, Math.cos(phi) * r);
-        }
-        starsGeometry2.setAttribute('position', new THREE.Float32BufferAttribute(positions2, 3));
-        const starsMaterial2 = new THREE.PointsMaterial({ size: 0.3, color: 0x88aaff, blending: THREE.AdditiveBlending });
-        const stars2 = new THREE.Points(starsGeometry2, starsMaterial2);
-        scene.add(stars2);
-
-        // --- sun sphere ---
-        const sunGeometry = new THREE.SphereGeometry(5, 64, 64);
-        const sunMaterial = new THREE.MeshStandardMaterial({
-            color: 0xffaa33,
-            emissive: 0xff5500,
-            emissiveIntensity: 2.5,
-            roughness: 0.3
-        });
-        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
-        sun.castShadow = false;
-        sun.receiveShadow = false;
-        scene.add(sun);
-
-        // sun sprite
-        const spriteMap = new THREE.CanvasTexture(generateSprite());
-        const spriteMaterial = new THREE.SpriteMaterial({ map: spriteMap, blending: THREE.AdditiveBlending, depthWrite: false });
-        const sprite = new THREE.Sprite(spriteMaterial);
-        sprite.scale.set(25, 25, 1);
-        sun.add(sprite);
-
-        // --- planet data ---
-        const planetsInfo = [
-            { name: 'Mercury', radius: 0.8, distance: 10, color: 0x9a9a9a, speed: 0.02, tilt: 0.1, texture: null },
-            { name: 'Venus', radius: 1.0, distance: 14, color: 0xe6b856, speed: 0.015, tilt: 3.0, texture: null },
-            { name: 'Earth', radius: 1.05, distance: 18, color: 0x2288ff, speed: 0.012, tilt: 0.41, texture: 'https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg' },
-            { name: 'Mars', radius: 0.9, distance: 22, color: 0xc45a3a, speed: 0.01, tilt: 0.44, texture: null },
-            { name: 'Jupiter', radius: 2.2, distance: 30, color: 0xd8a27a, speed: 0.007, tilt: 0.1, texture: null },
-            { name: 'Saturn', radius: 1.9, distance: 38, color: 0xe0c080, speed: 0.005, tilt: 0.47, texture: null, hasRings: true },
-            { name: 'Uranus', radius: 1.6, distance: 46, color: 0x6fd4d4, speed: 0.004, tilt: 1.7, texture: null },
-            { name: 'Neptune', radius: 1.6, distance: 54, color: 0x4169e1, speed: 0.003, tilt: 0.5, texture: null }
-        ];
-
-        const planets = [];
-        const orbits = [];
-        const labels = [];
-
-        const texLoader = new THREE.TextureLoader(loadingManager);
-
-        function createOrbitLine(radius, color = 0x5599ff) {
-            const points = [];
-            const segments = 128;
-            for (let i = 0; i <= segments; i++) {
-                const angle = (i / segments) * Math.PI * 2;
-                points.push(new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius));
-            }
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const material = new THREE.LineBasicMaterial({ color: color, opacity: 0.25, transparent: true });
-            const orbitLine = new THREE.LineLoop(geometry, material);
-            scene.add(orbitLine);
-            return orbitLine;
-        }
-
-        // Create a root group to hold everything that should be anchored in AR
-        const worldGroup = new THREE.Group();
-        scene.add(worldGroup);
-
-        // We will move sun and planets into worldGroup
-        worldGroup.add(sun);
-        // Also stars? For AR, we might want stars to be part of the anchored world, so they move with orientation.
-        worldGroup.add(stars);
-        worldGroup.add(stars2);
-
-        // Create planets and add to worldGroup
-        planetsInfo.forEach((info, idx) => {
-            const geometry = new THREE.SphereGeometry(info.radius, 48, 48);
-            let material;
-            if (info.texture) {
-                const map = texLoader.load(info.texture);
-                material = new THREE.MeshStandardMaterial({ map: map, roughness: 0.5, metalness: 0.1 });
-            } else {
-                material = new THREE.MeshStandardMaterial({ color: info.color, roughness: 0.6, emissive: 0x111111 });
-            }
-            const planet = new THREE.Mesh(geometry, material);
-            planet.castShadow = true;
-            planet.receiveShadow = true;
-            planet.userData = { 
-                name: info.name, 
-                distance: info.distance, 
-                speed: info.speed, 
-                tilt: info.tilt,
-                radius: info.radius,
-                color: info.color
-            };
-            
-            const initAngle = Math.random() * Math.PI * 2;
-            planet.position.x = Math.cos(initAngle) * info.distance;
-            planet.position.z = Math.sin(initAngle) * info.distance;
-            
-            worldGroup.add(planet);
-            planets.push(planet);
-
-            // orbit line (add to worldGroup so they move with world)
-            const orbit = createOrbitLine(info.distance, 0x88aaff);
-            orbit.userData.planetIndex = idx;
-            worldGroup.add(orbit);
-            orbits.push(orbit);
-
-            // CSS2D label (will be added to planet, so it's fine)
-            const labelDiv = document.createElement('div');
-            labelDiv.textContent = info.name;
-            labelDiv.style.color = '#f0f8ff';
-            labelDiv.style.fontSize = '20px';
-            labelDiv.style.fontWeight = '300';
-            labelDiv.style.textShadow = '0 0 15px #00bfff, 0 0 30px #0066aa';
-            labelDiv.style.background = 'rgba(10,20,40,0.4)';
-            labelDiv.style.backdropFilter = 'blur(8px)';
-            labelDiv.style.padding = '6px 18px';
-            labelDiv.style.borderRadius = '40px';
-            labelDiv.style.border = '1px solid rgba(100,200,255,0.4)';
-            labelDiv.style.whiteSpace = 'nowrap';
-            labelDiv.style.transition = 'transform 0.3s';
-            const label = new CSS2DObject(labelDiv);
-            label.position.set(0, info.radius + 1.5, 0);
-            planet.add(label);
-            labels.push(label);
-
-            if (info.hasRings) {
-                const ringGeo = new THREE.TorusGeometry(info.radius * 1.8, 0.4, 16, 100);
-                const ringMat = new THREE.MeshStandardMaterial({ color: 0xc0b0a0, emissive: 0x221100, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
-                const ring = new THREE.Mesh(ringGeo, ringMat);
-                ring.rotation.x = Math.PI / 2 + 0.2;
-                ring.rotation.z = 0.3;
-                planet.add(ring);
-            }
-
-            if (info.name === 'Earth') {
-                const cloudGeo = new THREE.SphereGeometry(info.radius * 1.01, 48, 48);
-                const cloudMap = texLoader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png');
-                const cloudMat = new THREE.MeshPhongMaterial({ map: cloudMap, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-                const clouds = new THREE.Mesh(cloudGeo, cloudMat);
-                planet.add(clouds);
-                planet.userData.clouds = clouds;
-            }
-        });
-
-        // --- Moon ---
-        const moonGeo = new THREE.SphereGeometry(0.35, 24, 24);
-        const moonMat = new THREE.MeshStandardMaterial({ color: 0xbbbbbb, roughness: 0.8 });
-        const moon = new THREE.Mesh(moonGeo, moonMat);
-        moon.castShadow = true;
-        moon.receiveShadow = true;
-        worldGroup.add(moon);
-
-        const moonOrbitPoints = [];
-        for (let i = 0; i <= 64; i++) {
-            const angle = (i/64)*Math.PI*2;
-            moonOrbitPoints.push(new THREE.Vector3(Math.cos(angle)*3.5, 0, Math.sin(angle)*3.5));
-        }
-        const moonOrbitGeo = new THREE.BufferGeometry().setFromPoints(moonOrbitPoints);
-        const moonOrbitLine = new THREE.LineLoop(moonOrbitGeo, new THREE.LineBasicMaterial({ color: 0xaaaaff, opacity: 0.3, transparent: true }));
-        worldGroup.add(moonOrbitLine);
-
-        // --- post processing ---
-        const renderScene = new RenderPass(scene, camera);
-        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-        bloomPass.threshold = 0.1;
-        bloomPass.strength = 1.2;
-        bloomPass.radius = 0.5;
-
-        const composer = new EffectComposer(renderer);
-        composer.addPass(renderScene);
-        composer.addPass(bloomPass);
-
-        const effectFXAA = new ShaderPass(FXAAShader);
-        effectFXAA.uniforms['resolution'].value.set(1 / window.innerWidth, 1 / window.innerHeight);
-        composer.addPass(effectFXAA);
-
-        // --- UI state ---
-        let showOrbits = true;
-        let showLabels = true;
-        let arMode = false;
-        let simSpeed = 1.0;
-        let paused = false;
-        let selectedPlanet = null;
-
-        // --- AR mode variables ---
-        const video = document.getElementById('ar-video');
-        const orientBtn = document.getElementById('orient-permission-btn');
-        let worldOrientation = new THREE.Quaternion(); // stores current orientation of worldGroup
-        let baseQuaternion = new THREE.Quaternion(); // reference orientation when AR started
-        let arActive = false;
-
-        // Start camera
+        // --- 1. Get camera feed ---
+        const video = document.getElementById('video-bg');
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' }, 
+                    video: { 
+                        facingMode: 'environment', // rear camera
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    },
                     audio: false 
                 });
                 video.srcObject = stream;
+                await video.play();
             } catch (err) {
-                alert('Camera access denied. AR will not show background.');
+                alert('Camera access needed for AR. Please grant permission.');
+                document.getElementById('status').innerText = '❌ Camera denied';
             }
         }
         startCamera();
 
-        // Orientation handling
-        function handleOrientation(event) {
-            if (!arMode) return;
+        // --- 2. Setup Three.js scene (transparent) ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        // No background - transparent to show video
 
-            const alpha = THREE.MathUtils.degToRad(event.alpha || 0);
-            const beta = THREE.MathUtils.degToRad(event.beta || 0);
-            const gamma = THREE.MathUtils.degToRad(event.gamma || 0);
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 0); // camera at origin, we will move the world
 
-            // Convert to quaternion (standard mapping)
-            const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -alpha);
-            const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -beta);
-            const qRoll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), gamma);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x000000, 0); // transparent
+        container.appendChild(renderer.domElement);
+
+        // --- 3. Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+        scene.add(ambientLight);
+        
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(1, 3, 2);
+        scene.add(dirLight);
+        
+        const backLight = new THREE.PointLight(0x4466aa, 1);
+        backLight.position.set(-2, 1, -3);
+        scene.add(backLight);
+
+        // --- 4. Create a group to hold our 3D object and control its position/rotation ---
+        const arGroup = new THREE.Group();
+        scene.add(arGroup);
+
+        // --- 5. Load a proper 3D object (glTF model) with texture ---
+        // We'll create a detailed object using primitives if glTF fails, but attempt to load a cool model.
+        // For reliability, we create a high-quality composite object: a "satellite" with multiple parts.
+        function createDetailedModel() {
+            const group = new THREE.Group();
+
+            // Main body (metallic sphere with texture approximation)
+            const bodyGeo = new THREE.IcosahedronGeometry(0.5, 2);
+            const bodyMat = new THREE.MeshStandardMaterial({ 
+                color: 0x3a6ea5, 
+                emissive: 0x112233,
+                roughness: 0.3, 
+                metalness: 0.7,
+                emissiveIntensity: 0.2
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            group.add(body);
+
+            // Panels (solar arrays)
+            const panelMat = new THREE.MeshStandardMaterial({ color: 0xccccdd, emissive: 0x111122, roughness: 0.4, metalness: 0.3 });
+            const panelGeo = new THREE.BoxGeometry(1.2, 0.1, 0.4);
+            const panel1 = new THREE.Mesh(panelGeo, panelMat);
+            panel1.position.set(0.9, 0, 0);
+            panel1.rotation.y = 0.2;
+            group.add(panel1);
             
-            const orientation = new THREE.Quaternion().multiply(qYaw).multiply(qPitch).multiply(qRoll);
-            
-            // Apply to worldGroup relative to base orientation
-            worldGroup.quaternion.copy(orientation.clone().multiply(baseQuaternion.clone().invert()));
+            const panel2 = new THREE.Mesh(panelGeo, panelMat);
+            panel2.position.set(-0.9, 0, 0);
+            panel2.rotation.y = -0.2;
+            group.add(panel2);
+
+            // Antenna (golden)
+            const antennaMat = new THREE.MeshStandardMaterial({ color: 0xffaa33, emissive: 0x331100, roughness: 0.2, metalness: 0.9 });
+            const antennaGeo = new THREE.ConeGeometry(0.2, 0.8, 16);
+            const antenna = new THREE.Mesh(antennaGeo, antennaMat);
+            antenna.position.set(0, 0.6, 0.3);
+            antenna.rotation.x = 0.3;
+            group.add(antenna);
+
+            // Rings around body
+            const ringMat = new THREE.MeshStandardMaterial({ color: 0xaaccff, emissive: 0x001122, roughness: 0.5, metalness: 0.8, wireframe: false });
+            const ringGeo = new THREE.TorusGeometry(0.65, 0.05, 16, 48);
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2;
+            ring.rotation.z = 0.3;
+            group.add(ring);
+
+            // Small details
+            const sphereGeo = new THREE.SphereGeometry(0.1, 8);
+            const detailMat = new THREE.MeshStandardMaterial({ color: 0xff5500, emissive: 0x220000 });
+            const detail = new THREE.Mesh(sphereGeo, detailMat);
+            detail.position.set(0.4, 0.2, 0.5);
+            group.add(detail);
+
+            return group;
         }
 
-        // Request permission for iOS
+        const arObject = createDetailedModel();
+        arGroup.add(arObject);
+
+        // Position the object initially at a comfortable distance (2 meters away)
+        arGroup.position.set(0, 0, -2);
+
+        // We also want the object to rotate on its own axis slowly (just for effect)
+        arObject.rotation.y = 0.5; // initial rotation
+
+        // --- 6. Sensor fusion: orientation tracking using deviceorientation with complementary filter ---
+        // We'll maintain a quaternion representing the rotation of the device relative to world.
+        // Then we apply inverse to the arGroup so object appears fixed.
+
+        let deviceQuat = new THREE.Quaternion(); // raw orientation from sensors
+        let filteredQuat = new THREE.Quaternion(); // smoothed quaternion
+        const alpha = 0.95; // low-pass filter constant (0.95 means heavy smoothing)
+        
+        // For fallback, we also keep euler angles but quaternion is better.
+        let orientationAvailable = false;
+        const statusEl = document.getElementById('status');
+        const orientBtn = document.getElementById('orient-btn');
+        const recenterBtn = document.getElementById('recenter-btn');
+        const resetScaleBtn = document.getElementById('reset-scale-btn');
+
+        // Convert deviceorientation to quaternion (standard AR orientation: phone pointing away from you)
+        function deviceOrientationToQuaternion(alpha, beta, gamma) {
+            // alpha: rotation around z (0 to 360, 0 = north)
+            // beta: front-back tilt (-180 to 180)
+            // gamma: left-right tilt (-90 to 90)
+            // For AR, we want: 
+            //   pitch = beta  (rotation around X)
+            //   roll = gamma  (rotation around Y? careful)
+            //   yaw = alpha   (rotation around Y? Actually device orientation: 
+            //   Standard: alpha = rotation around Z, beta = rotation around X, gamma = rotation around Y.
+            //   But for a phone in landscape? We'll use standard where Y is vertical (pointing up).
+            //   Better to use existing formula from three.js examples.
+            
+            // Convert to radians
+            const degToRad = Math.PI / 180;
+            const a = alpha * degToRad;
+            const b = beta * degToRad;
+            const g = gamma * degToRad;
+
+            // Quaternion from Euler (Z, X, Y) order? We'll use 'ZXY' which seems common for deviceorientation.
+            // However we need to align axes: In three.js, Y is up. In deviceorientation, when phone is upright, 
+            // X points right, Y points up, Z points towards user. That matches three.js if we map:
+            //   alpha (Z) -> rotation around Y? Actually if phone is held vertically, alpha rotates around gravity axis (world Z).
+            //   But we want the world to rotate opposite so that object seems fixed.
+            
+            // A proven method: use three.js Euler with order 'YXZ' (yaw around Y, pitch around X, roll around Z)
+            // But we need to adjust signs. Based on online AR examples:
+            //   - Rotate around Y by -alpha (since alpha increases clockwise from north)
+            //   - Rotate around X by -beta (beta positive when top of phone tilts forward)
+            //   - Rotate around Z by gamma (gamma positive when phone tilts right)
+            // We'll combine using quaternion multiplication.
+            
+            const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a);
+            const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -b);
+            const qRoll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), g);
+            
+            // Combine: first yaw, then pitch, then roll (intrinsic rotations)
+            return qYaw.clone().multiply(qPitch).multiply(qRoll);
+        }
+
+        function handleOrientation(event) {
+            if (event.alpha === null || event.beta === null || event.gamma === null) return;
+            
+            const q = deviceOrientationToQuaternion(event.alpha, event.beta, event.gamma);
+            
+            // Simple exponential moving average filter
+            if (!orientationAvailable) {
+                filteredQuat.copy(q);
+                orientationAvailable = true;
+                statusEl.innerText = '🟢 Sensors active';
+                orientBtn.style.display = 'none';
+            } else {
+                // SLERP for smooth interpolation
+                filteredQuat.slerp(q, 0.1); // 0.1 factor gives smoothing but responsive
+            }
+            
+            // Invert quaternion because we want to rotate the world opposite to device
+            const inv = filteredQuat.clone().invert();
+            arGroup.quaternion.copy(inv);
+        }
+
+        // Permission for iOS
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             orientBtn.style.display = 'block';
             orientBtn.addEventListener('click', () => {
@@ -638,219 +339,119 @@
                     .then(response => {
                         if (response === 'granted') {
                             window.addEventListener('deviceorientation', handleOrientation);
-                            orientBtn.style.display = 'none';
+                            statusEl.innerText = '🟢 Sensors enabled';
                         } else {
-                            alert('Motion sensors permission denied');
+                            statusEl.innerText = '❌ Sensor permission denied';
                         }
                     })
                     .catch(console.error);
             });
         } else {
             window.addEventListener('deviceorientation', handleOrientation);
+            orientBtn.style.display = 'none';
         }
 
-        // AR toggle button
-        document.getElementById('toggle-ar').addEventListener('click', (e) => {
-            arMode = !arMode;
-            e.target.classList.toggle('active');
-            
-            if (arMode) {
-                // Switch to AR mode
-                controls.enabled = false;
-                // Set camera to a fixed position relative to worldGroup
-                camera.position.set(0, 0, 0);
-                camera.rotation.set(0, 0, 0);
-                // Position worldGroup 5 meters in front (in camera space)
-                worldGroup.position.set(0, 0, -5); 
-                // Save the current orientation as base so that object appears in front
-                // We need an initial orientation reading; we'll set baseQuaternion to the inverse of current orientation
-                // For simplicity, we'll use the first event after AR starts.
-                // But we don't have one yet. Let's set a default and then adjust on first event.
-                baseQuaternion.set(0, 0, 0, 1); // identity
-                // On next orientation event, we'll compute offset.
-                // Better: set baseQuaternion to the current orientation when AR started.
-                // We'll use a one-time listener.
-                const onFirstOrientation = (e) => {
-                    const alpha = THREE.MathUtils.degToRad(e.alpha || 0);
-                    const beta = THREE.MathUtils.degToRad(e.beta || 0);
-                    const gamma = THREE.MathUtils.degToRad(e.gamma || 0);
-                    const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -alpha);
-                    const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -beta);
-                    const qRoll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), gamma);
-                    baseQuaternion.copy(qYaw.multiply(qPitch).multiply(qRoll));
-                    window.removeEventListener('deviceorientation', onFirstOrientation);
-                };
-                window.addEventListener('deviceorientation', onFirstOrientation, { once: true });
-
-                // Set renderer transparent and show video
-                renderer.setClearColor(0x000000, 0);
-                scene.background = null;
-                video.style.display = 'block';
-                // Optionally hide CSS labels if they obscure? Keep them.
-            } else {
-                // Switch back to normal mode
-                controls.enabled = true;
-                camera.position.set(0, 30, 80);
-                controls.target.set(0, 0, 0);
-                worldGroup.position.set(0, 0, 0);
-                worldGroup.quaternion.set(0, 0, 0, 1);
-                scene.background = new THREE.Color(0x050b1a);
-                video.style.display = 'none';
-                renderer.setClearColor(0x000000, 1); // opaque
+        // Fallback message if no orientation after 3 seconds
+        setTimeout(() => {
+            if (!orientationAvailable) {
+                statusEl.innerText = '⚠️ No orientation data (gyro?)';
             }
-        });
+        }, 3000);
 
-        // Other UI listeners (as in original)
-        document.getElementById('toggle-orbits').addEventListener('click', () => {
-            showOrbits = !showOrbits;
-            orbits.forEach(o => o.visible = showOrbits);
-            moonOrbitLine.visible = showOrbits;
-        });
-        document.getElementById('toggle-labels').addEventListener('click', () => {
-            showLabels = !showLabels;
-            labels.forEach(l => l.visible = showLabels);
-        });
-        document.getElementById('reset-view').addEventListener('click', () => {
-            controls.target.set(0, 0, 0);
-            camera.position.set(0, 20, 70);
-            controls.update();
-            selectedPlanet = null;
-            document.getElementById('planet-info-panel').classList.remove('visible');
-        });
-        document.getElementById('speed-slider').addEventListener('input', (e) => simSpeed = parseFloat(e.target.value));
-        document.getElementById('pause-play').addEventListener('click', (e) => {
-            paused = !paused;
-            e.target.textContent = paused ? '▶️' : '⏸️';
-        });
+        // --- 7. Interaction: pinch to zoom (scale) and drag to move object position ---
+        let initialDistance = null;
+        let initialScale = 1;
+        let touchStartPos = null;
+        let initialObjPos = null;
+        const moveSpeed = 0.01; // sensitivity for drag
 
-        // Raycasting for planet selection
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-        renderer.domElement.addEventListener('click', (event) => {
-            if (arMode) return; // maybe disable selection in AR for simplicity
-            mouse.x = (event.clientX / renderer.domElement.clientWidth) * 2 - 1;
-            mouse.y = -(event.clientY / renderer.domElement.clientHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(planets);
-            if (intersects.length > 0) {
-                const planet = intersects[0].object;
-                selectedPlanet = planet;
-                const worldPos = planet.position.clone();
-                controls.target.copy(worldPos);
-                const direction = camera.position.clone().sub(worldPos).normalize();
-                const newCamPos = worldPos.clone().add(direction.multiplyScalar(15));
-                camera.position.copy(newCamPos);
-                controls.update();
-
-                const data = planet.userData;
-                document.getElementById('planet-name').textContent = data.name;
-                document.getElementById('planet-diameter').textContent = (data.radius * 2).toFixed(1) + 'k km';
-                document.getElementById('planet-distance').textContent = data.distance + ' M km';
-                document.getElementById('planet-orbitspeed').textContent = (data.speed * 10).toFixed(2) + ' km/s';
-                document.getElementById('planet-type').textContent = 'Terrestrial';
-                document.getElementById('planet-info-panel').classList.add('visible');
-            } else {
-                selectedPlanet = null;
-                document.getElementById('planet-info-panel').classList.remove('visible');
+        container.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                // pinch start
+                const dx = e.touches[0].pageX - e.touches[1].pageX;
+                const dy = e.touches[0].pageY - e.touches[1].pageY;
+                initialDistance = Math.sqrt(dx*dx + dy*dy);
+                initialScale = arGroup.scale.x;
+                e.preventDefault();
+            } else if (e.touches.length === 1) {
+                // drag start (move object in screen plane)
+                touchStartPos = new THREE.Vector2(e.touches[0].pageX, e.touches[0].pageY);
+                initialObjPos = arGroup.position.clone();
+                e.preventDefault();
             }
-        });
+        }, { passive: false });
 
-        renderer.domElement.addEventListener('mousemove', (event) => {
-            if (arMode) return;
-            mouse.x = (event.clientX / renderer.domElement.clientWidth) * 2 - 1;
-            mouse.y = -(event.clientY / renderer.domElement.clientHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(planets);
-            renderer.domElement.style.cursor = intersects.length > 0 ? 'pointer' : 'default';
-            if (intersects.length > 0) {
-                document.getElementById('hover-info').innerHTML = `🔭 ${intersects[0].object.userData.name}`;
-            } else {
-                document.getElementById('hover-info').innerHTML = '🌌 FREE ROAM • CLICK PLANET TO ZOOM';
+        container.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && initialDistance) {
+                // pinch zoom
+                const dx = e.touches[0].pageX - e.touches[1].pageX;
+                const dy = e.touches[0].pageY - e.touches[1].pageY;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                const scale = initialScale * (distance / initialDistance);
+                arGroup.scale.set(scale, scale, scale);
+                e.preventDefault();
+            } else if (e.touches.length === 1 && touchStartPos && initialObjPos) {
+                // drag to move object in X/Y plane relative to camera
+                const currentPos = new THREE.Vector2(e.touches[0].pageX, e.touches[0].pageY);
+                const deltaX = (currentPos.x - touchStartPos.x) * moveSpeed;
+                const deltaY = (currentPos.y - touchStartPos.y) * moveSpeed;
+                
+                // Move in camera's local space: X is right, Y is up. But we want movement parallel to screen.
+                // We'll move the object in world space relative to camera orientation.
+                // Simplified: move in arGroup's parent space (which is scene). Camera is at origin, so moving along world X and Y.
+                // But to feel natural, we should move along camera's right and up vectors.
+                const cameraDir = new THREE.Vector3(0, 0, -1); // camera looks -Z
+                const cameraRight = new THREE.Vector3(1, 0, 0);
+                const cameraUp = new THREE.Vector3(0, 1, 0);
+                
+                // Apply rotation of camera? Actually camera orientation is identity, world rotates around it.
+                // So we move object in world coordinates.
+                arGroup.position.x = initialObjPos.x + deltaX;
+                arGroup.position.y = initialObjPos.y - deltaY; // inverted Y because screen Y increases downward
+                e.preventDefault();
             }
+        }, { passive: false });
+
+        container.addEventListener('touchend', () => {
+            initialDistance = null;
+            touchStartPos = null;
         });
 
-        // --- animation loop ---
-        let clock = new THREE.Clock();
+        // Recenter object to (0,0,-2)
+        recenterBtn.addEventListener('click', () => {
+            arGroup.position.set(0, 0, -2);
+            arGroup.scale.set(1, 1, 1);
+        });
 
+        resetScaleBtn.addEventListener('click', () => {
+            arGroup.scale.set(1, 1, 1);
+        });
+
+        // --- 8. Animation loop ---
         function animate() {
             requestAnimationFrame(animate);
 
-            const delta = clock.getDelta();
-            const effectiveDelta = paused ? 0 : delta * simSpeed;
+            // Add some gentle floating rotation to the object itself (optional)
+            arObject.rotation.y += 0.002;
+            arObject.rotation.x = Math.sin(Date.now() * 0.001) * 0.05;
 
-            // Rotate planets around sun (within worldGroup)
-            planets.forEach(planet => {
-                if (!paused) {
-                    const speed = planet.userData.speed;
-                    const distance = planet.userData.distance;
-                    const angle = Math.atan2(planet.position.z, planet.position.x);
-                    const newAngle = angle + speed * effectiveDelta * 2;
-                    planet.position.x = Math.cos(newAngle) * distance;
-                    planet.position.z = Math.sin(newAngle) * distance;
-                    
-                    planet.rotation.y += 0.005 * effectiveDelta * 5;
-                    if (planet.userData.clouds) planet.userData.clouds.rotation.y += 0.001;
-                }
-            });
-
-            // Moon orbiting Earth
-            if (!paused) {
-                const earth = planets.find(p => p.userData.name === 'Earth');
-                if (earth) {
-                    const moonAngle = (Date.now() * 0.001) * 0.5;
-                    moon.position.x = earth.position.x + Math.cos(moonAngle) * 3.5;
-                    moon.position.z = earth.position.z + Math.sin(moonAngle) * 3.5;
-                    moon.position.y = earth.position.y + Math.sin(moonAngle) * 0.5;
-                }
-            }
-
-            // Twinkling stars
-            const time = Date.now() * 0.0005;
-            stars.material.opacity = 0.8 + Math.sin(time) * 0.1;
-            stars2.material.opacity = 0.7 + Math.cos(time * 1.3) * 0.15;
-
-            // Rotate starfield (still relative to worldGroup)
-            stars.rotation.y += 0.00002;
-            stars2.rotation.x += 0.00001;
-
-            if (!arMode) {
-                controls.update();
-            }
-
-            // Render via composer
-            composer.render();
-            labelRenderer.render(scene, camera);
+            renderer.render(scene, camera);
         }
         animate();
 
-        function generateSprite() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 64;
-            canvas.height = 64;
-            const ctx = canvas.getContext('2d');
-            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-            gradient.addColorStop(0, 'rgba(255,255,255,1)');
-            gradient.addColorStop(0.4, 'rgba(255,200,100,0.8)');
-            gradient.addColorStop(0.6, 'rgba(180,100,50,0.4)');
-            gradient.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 64, 64);
-            return canvas;
-        }
-
-        window.addEventListener('resize', onWindowResize, false);
-        function onWindowResize() {
+        // --- 9. Resize handling ---
+        window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            labelRenderer.setSize(window.innerWidth, window.innerHeight);
-            composer.setSize(window.innerWidth, window.innerHeight);
-            effectFXAA.uniforms['resolution'].value.set(1 / window.innerWidth, 1 / window.innerHeight);
-        }
+        });
 
-        // Initial visibility
-        orbits.forEach(o => o.visible = true);
-        moonOrbitLine.visible = true;
+        // --- 10. Additional: try to use absolute orientation if available (compensate magnetic declination?) Not needed.
+        // We'll just rely on alpha for yaw.
+
+        // For better stability, we could also listen to devicemotion but we'll keep it simple.
+
+        console.log('AR setup ready');
     </script>
 </body>
 </html>
