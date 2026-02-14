@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AR Solar System – Live Camera + Gyroscope</title>
+    <title>Live Camera + Sensors</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            touch-action: none;  /* prevent browser scroll/pinch */
             background: black;
+            color: white;
         }
         #video-bg {
             position: fixed;
@@ -22,455 +22,234 @@
             z-index: 0;
             pointer-events: none;
         }
-        #canvas-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            pointer-events: none; /* canvas doesn't block touches, we use container for gestures */
-        }
-        #status {
+        #overlay {
             position: absolute;
             top: 20px;
             left: 20px;
-            z-index: 3;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(8px);
-            color: #ffd966;
-            padding: 8px 20px;
-            border-radius: 40px;
-            font-size: 15px;
-            border: 1px solid rgba(255,215,0,0.5);
-            pointer-events: none;
-        }
-        #orient-btn {
-            position: absolute;
-            top: 20px;
             right: 20px;
-            z-index: 3;
+            bottom: 20px;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none; /* allow clicks to pass to button if needed */
+        }
+        #sensor-data {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 24px;
+            border: 1px solid rgba(255,255,255,0.2);
+            width: fit-content;
+            max-width: 90%;
+            align-self: flex-start;
+            font-size: 16px;
+            line-height: 1.6;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+            color: #fff;
+            text-shadow: 0 2px 4px black;
+            pointer-events: auto; /* allow selection if needed */
+        }
+        #sensor-data div {
+            margin: 4px 0;
+        }
+        .badge {
+            color: #ffd966;
+            font-weight: 600;
+        }
+        #permission-btn {
             background: #1e2a3a;
             color: white;
             border: 2px solid #4aa3ff;
             border-radius: 40px;
-            padding: 12px 24px;
-            font-size: 16px;
+            padding: 14px 28px;
+            font-size: 18px;
             font-weight: bold;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            display: none; /* shown only if iOS permission needed */
             cursor: pointer;
             pointer-events: auto;
+            align-self: center;
+            margin-bottom: 30px;
+            width: fit-content;
+            backdrop-filter: blur(8px);
+            background: rgba(30,40,60,0.9);
+            border: 1px solid #4aa3ff;
         }
-        #controls {
-            position: absolute;
-            bottom: 30px;
-            left: 0;
-            right: 0;
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-            z-index: 2;
-            pointer-events: none;
+        #status {
+            color: #ccc;
+            font-size: 14px;
+            margin-top: 10px;
         }
-        .btn {
-            pointer-events: auto;
-            background: rgba(20,30,45,0.8);
-            backdrop-filter: blur(12px);
-            color: white;
-            border: 1px solid rgba(255,215,0,0.4);
-            padding: 12px 28px;
-            border-radius: 50px;
-            font-size: 16px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.6);
-            transition: 0.1s;
-            border: 1px solid #ffd96699;
-        }
-        .btn:active {
-            transform: scale(0.96);
-            background: #2a3f5a;
-        }
-        #hint {
-            position: absolute;
-            bottom: 100px;
-            left: 20px;
-            right: 20px;
-            text-align: center;
-            color: white;
+        .footer {
+            align-self: flex-end;
             background: rgba(0,0,0,0.4);
             backdrop-filter: blur(5px);
-            padding: 10px 18px;
+            padding: 10px 20px;
             border-radius: 40px;
+            font-size: 14px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.2);
             width: fit-content;
             margin: 0 auto;
-            z-index: 2;
-            font-size: 15px;
-            border: 1px solid rgba(255,255,255,0.2);
-            pointer-events: none;
         }
     </style>
 </head>
 <body>
     <video id="video-bg" autoplay playsinline></video>
-    <div id="canvas-container"></div>
-
-    <div id="status">🔴 Waiting for camera & sensors...</div>
-    <button id="orient-btn">🔘 Enable Motion Sensors</button>
-    <div id="hint">🌠 Move phone to explore • Pinch to zoom • Drag to move</div>
-    <div id="controls">
-        <button class="btn" id="recenter-btn">🎯 Recenter</button>
-        <button class="btn" id="reset-scale-btn">🔍 Reset Scale</button>
+    
+    <div id="overlay">
+        <div id="sensor-data">
+            <div><span class="badge">📱 Orientation (degrees)</span></div>
+            <div>🔵 Alpha (heading): <span id="alpha">0</span>°</div>
+            <div>🟢 Beta (tilt front/back): <span id="beta">0</span>°</div>
+            <div>🔴 Gamma (tilt left/right): <span id="gamma">0</span>°</div>
+            <div style="margin-top:12px;"><span class="badge">⚡ Motion</span></div>
+            <div>📊 Acceleration (m/s²):</div>
+            <div>  X: <span id="accelX">0</span>, Y: <span id="accelY">0</span>, Z: <span id="accelZ">0</span></div>
+            <div>🌍 With gravity:</div>
+            <div>  X: <span id="accelGX">0</span>, Y: <span id="accelGY">0</span>, Z: <span id="accelGZ">0</span></div>
+            <div>🌀 Rotation rate (°/s):</div>
+            <div>  α: <span id="rotAlpha">0</span>, β: <span id="rotBeta">0</span>, γ: <span id="rotGamma">0</span></div>
+            <div>⏱️ Interval: <span id="interval">0</span> ms</div>
+            <div id="status">🔄 Initializing sensors...</div>
+        </div>
+        
+        <button id="permission-btn" style="display: none;">🔘 Enable Motion Sensors</button>
+        
+        <div class="footer">
+            📷 Live camera background | Sensors: gyroscope + accelerometer
+        </div>
     </div>
 
-    <!-- Import Three.js from CDN (r128) -->
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.128.0/build/three.module.js"
+    <script>
+        (function() {
+            // Get DOM elements
+            const video = document.getElementById('video-bg');
+            const alphaSpan = document.getElementById('alpha');
+            const betaSpan = document.getElementById('beta');
+            const gammaSpan = document.getElementById('gamma');
+            const accelXSpan = document.getElementById('accelX');
+            const accelYSpan = document.getElementById('accelY');
+            const accelZSpan = document.getElementById('accelZ');
+            const accelGXSpan = document.getElementById('accelGX');
+            const accelGYSpan = document.getElementById('accelGY');
+            const accelGZSpan = document.getElementById('accelGZ');
+            const rotAlphaSpan = document.getElementById('rotAlpha');
+            const rotBetaSpan = document.getElementById('rotBeta');
+            const rotGammaSpan = document.getElementById('rotGamma');
+            const intervalSpan = document.getElementById('interval');
+            const statusDiv = document.getElementById('status');
+            const permissionBtn = document.getElementById('permission-btn');
+
+            // Camera stream
+            async function startCamera() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: 'environment' }, // rear camera
+                        audio: false 
+                    });
+                    video.srcObject = stream;
+                    statusDiv.innerHTML = '✅ Camera active';
+                } catch (err) {
+                    statusDiv.innerHTML = '❌ Camera access denied';
+                    console.error(err);
+                }
             }
-        }
-    </script>
+            startCamera();
 
-    <script type="module">
-        import * as THREE from 'three';
-
-        // --- 1. Camera stream (rear camera) ---
-        const video = document.getElementById('video-bg');
-        async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-                    audio: false 
-                });
-                video.srcObject = stream;
-                await video.play();
-                document.getElementById('status').innerText = '📷 Camera active';
-            } catch (err) {
-                alert('Camera access needed for AR.');
-                document.getElementById('status').innerText = '❌ Camera denied';
+            // Sensor data handlers
+            function handleOrientation(event) {
+                if (event.alpha !== null) {
+                    alphaSpan.textContent = event.alpha.toFixed(1);
+                } else {
+                    alphaSpan.textContent = 'N/A';
+                }
+                if (event.beta !== null) {
+                    betaSpan.textContent = event.beta.toFixed(1);
+                } else {
+                    betaSpan.textContent = 'N/A';
+                }
+                if (event.gamma !== null) {
+                    gammaSpan.textContent = event.gamma.toFixed(1);
+                } else {
+                    gammaSpan.textContent = 'N/A';
+                }
             }
-        }
-        startCamera();
 
-        // --- 2. Three.js setup (transparent) ---
-        const container = document.getElementById('canvas-container');
-        const scene = new THREE.Scene();
-        scene.background = null; // transparent
+            function handleMotion(event) {
+                const accel = event.acceleration;
+                const accelG = event.accelerationIncludingGravity;
+                const rotRate = event.rotationRate;
+                const interval = event.interval;
 
-        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 0, 0); // camera at origin, we'll move the world
+                if (accel) {
+                    accelXSpan.textContent = accel.x !== null ? accel.x.toFixed(2) : '0';
+                    accelYSpan.textContent = accel.y !== null ? accel.y.toFixed(2) : '0';
+                    accelZSpan.textContent = accel.z !== null ? accel.z.toFixed(2) : '0';
+                } else {
+                    accelXSpan.textContent = 'N/A';
+                    accelYSpan.textContent = 'N/A';
+                    accelZSpan.textContent = 'N/A';
+                }
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.setClearColor(0x000000, 0); // fully transparent
-        container.appendChild(renderer.domElement);
+                if (accelG) {
+                    accelGXSpan.textContent = accelG.x !== null ? accelG.x.toFixed(2) : '0';
+                    accelGYSpan.textContent = accelG.y !== null ? accelG.y.toFixed(2) : '0';
+                    accelGZSpan.textContent = accelG.z !== null ? accelG.z.toFixed(2) : '0';
+                } else {
+                    accelGXSpan.textContent = 'N/A';
+                    accelGYSpan.textContent = 'N/A';
+                    accelGZSpan.textContent = 'N/A';
+                }
 
-        // --- 3. Lighting ---
-        const ambientLight = new THREE.AmbientLight(0x404060); // soft light
-        scene.add(ambientLight);
+                if (rotRate) {
+                    rotAlphaSpan.textContent = rotRate.alpha !== null ? rotRate.alpha.toFixed(2) : '0';
+                    rotBetaSpan.textContent = rotRate.beta !== null ? rotRate.beta.toFixed(2) : '0';
+                    rotGammaSpan.textContent = rotRate.gamma !== null ? rotRate.gamma.toFixed(2) : '0';
+                } else {
+                    rotAlphaSpan.textContent = 'N/A';
+                    rotBetaSpan.textContent = 'N/A';
+                    rotGammaSpan.textContent = 'N/A';
+                }
 
-        // Sun light (point light at sun position)
-        const sunLight = new THREE.PointLight(0xffeedd, 2, 0, 0);
-        sunLight.position.set(0, 0, 0); // will be placed at sun
-        scene.add(sunLight);
-
-        // Additional directional light to highlight planets
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-        dirLight.position.set(1, 2, 3);
-        scene.add(dirLight);
-
-        // --- 4. Create the Solar System as a group (AR anchor) ---
-        const arGroup = new THREE.Group();
-        scene.add(arGroup);
-
-        // Planet definitions: name, color, size, orbit radius, speed (revolution factor)
-        const planetsData = [
-            { name: 'mercury', color: 0xaaaaaa, size: 0.4, radius: 5, speed: 2.0 },
-            { name: 'venus',   color: 0xffcc88, size: 0.6, radius: 6, speed: 1.5 },
-            { name: 'earth',   color: 0x2288ff, size: 0.7, radius: 7, speed: 1.2 },
-            { name: 'mars',    color: 0xff6633, size: 0.6, radius: 8, speed: 1.0 },
-            { name: 'jupiter', color: 0xddbb99, size: 1.4, radius: 10, speed: 0.7 },
-            { name: 'saturn',  color: 0xeeddbb, size: 1.2, radius: 12, speed: 0.6 },
-            { name: 'uranus',  color: 0x88ccff, size: 1.0, radius: 14, speed: 0.5 },
-            { name: 'neptune', color: 0x3366ff, size: 0.9, radius: 16, speed: 0.4 }
-        ];
-
-        // Store planet meshes for animation
-        const planetMeshes = [];
-
-        // Create the Sun (emissive)
-        const sunGeo = new THREE.SphereGeometry(2.5, 64, 64);
-        const sunMat = new THREE.MeshStandardMaterial({ 
-            color: 0xffaa33, 
-            emissive: 0xff5500, 
-            emissiveIntensity: 1.2,
-            roughness: 0.2
-        });
-        const sun = new THREE.Mesh(sunGeo, sunMat);
-        sun.position.set(0, 0, 0);
-        arGroup.add(sun);
-        sunLight.position.copy(sun.position); // light at sun
-
-        // Create orbits (transparent rings) and planets
-        planetsData.forEach(p => {
-            // Orbit ring
-            const ringGeo = new THREE.RingGeometry(p.radius - 0.1, p.radius + 0.1, 128);
-            const ringMat = new THREE.MeshStandardMaterial({ color: 0x88aaff, side: THREE.DoubleSide, transparent: true, opacity: 0.2 });
-            const ring = new THREE.Mesh(ringGeo, ringMat);
-            ring.rotation.x = Math.PI / 2;
-            arGroup.add(ring);
-
-            // Planet
-            const geo = new THREE.SphereGeometry(p.size, 48, 48);
-            const mat = new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.3, metalness: 0.1 });
-            const planet = new THREE.Mesh(geo, mat);
-            planet.userData = { radius: p.radius, speed: p.speed, angle: Math.random() * Math.PI * 2 };
-            arGroup.add(planet);
-            planetMeshes.push(planet);
-
-            // Add a tiny ring for Saturn (special)
-            if (p.name === 'saturn') {
-                const ringSatGeo = new THREE.TorusGeometry(p.size * 1.6, 0.15, 16, 64);
-                const ringSatMat = new THREE.MeshStandardMaterial({ color: 0xc2b280, side: THREE.DoubleSide });
-                const ringSat = new THREE.Mesh(ringSatGeo, ringSatMat);
-                ringSat.rotation.x = Math.PI / 2;
-                ringSat.rotation.z = 0.3;
-                planet.add(ringSat); // attach to saturn so it moves with it
+                intervalSpan.textContent = interval ? interval.toFixed(2) : '0';
             }
-        });
 
-        // Initial position of the whole system: 7 units in front of camera
-        arGroup.position.set(0, 0, -7);
-
-        // --- 5. Device Orientation handling (gyroscope + accelerometer) ---
-        let orientationAvailable = false;
-        const statusEl = document.getElementById('status');
-        const orientBtn = document.getElementById('orient-btn');
-
-        // We maintain a quaternion representing the desired rotation of the group (inverse of device)
-        let targetQuat = new THREE.Quaternion();
-
-        function handleOrientation(event) {
-            if (event.alpha === null || event.beta === null || event.gamma === null) return;
-            
-            const degToRad = Math.PI / 180;
-            const alpha = event.alpha * degToRad; // z-axis rotation (0-360)
-            const beta = event.beta * degToRad;   // x-axis tilt (-180 to 180)
-            const gamma = event.gamma * degToRad;  // y-axis tilt (-90 to 90)
-
-            // Build quaternion from device orientation (standard: ZXY order? We'll use combination)
-            // We want to rotate the world opposite to device.
-            // Common formula: yaw around Y (-alpha), pitch around X (-beta), roll around Z (gamma)
-            const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -alpha);
-            const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -beta);
-            const qRoll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), gamma);
-            
-            // Compose: yaw * pitch * roll (order matters)
-            const rawQuat = qYaw.clone().multiply(qPitch).multiply(qRoll);
-            
-            // Smooth a bit with slerp
-            if (!orientationAvailable) {
-                targetQuat.copy(rawQuat);
-                orientationAvailable = true;
-                statusEl.innerText = '🟢 Sensors active';
-                orientBtn.style.display = 'none';
-            } else {
-                targetQuat.slerp(rawQuat, 0.15);
-            }
-            
-            // Apply inverse to the group so that the system appears fixed
-            arGroup.quaternion.copy(targetQuat).invert();
-        }
-
-        // iOS 13+ permission
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            orientBtn.style.display = 'block';
-            orientBtn.addEventListener('click', () => {
-                DeviceOrientationEvent.requestPermission()
-                    .then(response => {
+            // Permission handling for iOS 13+
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS requires explicit permission
+                permissionBtn.style.display = 'inline-block';
+                permissionBtn.addEventListener('click', async () => {
+                    try {
+                        const response = await DeviceOrientationEvent.requestPermission();
                         if (response === 'granted') {
                             window.addEventListener('deviceorientation', handleOrientation);
-                            statusEl.innerText = '🟢 Sensors enabled';
+                            window.addEventListener('devicemotion', handleMotion);
+                            statusDiv.innerHTML = '✅ Sensors enabled';
+                            permissionBtn.style.display = 'none';
                         } else {
-                            statusEl.innerText = '❌ Sensor permission denied';
+                            statusDiv.innerHTML = '❌ Sensor permission denied';
                         }
-                    })
-                    .catch(console.error);
-            });
-        } else {
-            window.addEventListener('deviceorientation', handleOrientation);
-            orientBtn.style.display = 'none';
-        }
-
-        // Fallback if no orientation after 4s
-        setTimeout(() => {
-            if (!orientationAvailable) {
-                statusEl.innerText = '⚠️ No orientation data';
+                    } catch (err) {
+                        statusDiv.innerHTML = '❌ Error requesting permission';
+                        console.error(err);
+                    }
+                });
+            } else {
+                // Non-iOS or older iOS — just add listeners
+                window.addEventListener('deviceorientation', handleOrientation);
+                window.addEventListener('devicemotion', handleMotion);
+                permissionBtn.style.display = 'none';
+                statusDiv.innerHTML = '✅ Sensors active';
             }
-        }, 4000);
 
-        // --- 6. Interaction: pinch to scale (zoom), one-finger drag to move ---
-        let initialDistance = null;
-        let initialScale = 1;
-        let touchStartPos = null;
-        let initialObjPos = null;
-        const moveSpeed = 0.012;
-
-        container.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) {
-                const dx = e.touches[0].pageX - e.touches[1].pageX;
-                const dy = e.touches[0].pageY - e.touches[1].pageY;
-                initialDistance = Math.sqrt(dx*dx + dy*dy);
-                initialScale = arGroup.scale.x;
-                e.preventDefault();
-            } else if (e.touches.length === 1) {
-                touchStartPos = new THREE.Vector2(e.touches[0].pageX, e.touches[0].pageY);
-                initialObjPos = arGroup.position.clone();
-                e.preventDefault();
-            }
-        }, { passive: false });
-
-        container.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 2 && initialDistance) {
-                const dx = e.touches[0].pageX - e.touches[1].pageX;
-                const dy = e.touches[0].pageY - e.touches[1].pageY;
-                const distance = Math.sqrt(dx*dx + dy*dy);
-                const scale = initialScale * (distance / initialDistance);
-                arGroup.scale.set(scale, scale, scale);
-                e.preventDefault();
-            } else if (e.touches.length === 1 && touchStartPos && initialObjPos) {
-                const currentPos = new THREE.Vector2(e.touches[0].pageX, e.touches[0].pageY);
-                const deltaX = (currentPos.x - touchStartPos.x) * moveSpeed;
-                const deltaY = (currentPos.y - touchStartPos.y) * moveSpeed;
-                
-                // Move in world coordinates (camera is at origin, so moving along X/Y)
-                arGroup.position.x = initialObjPos.x + deltaX;
-                arGroup.position.y = initialObjPos.y - deltaY; // Y inverted because screen Y increases downward
-                e.preventDefault();
-            }
-        }, { passive: false });
-
-        container.addEventListener('touchend', () => {
-            initialDistance = null;
-            touchStartPos = null;
-        });
-
-        // Buttons
-        document.getElementById('recenter-btn').addEventListener('click', () => {
-            arGroup.position.set(0, 0, -7);
-            arGroup.scale.set(1, 1, 1);
-        });
-        document.getElementById('reset-scale-btn').addEventListener('click', () => {
-            arGroup.scale.set(1, 1, 1);
-        });
-
-        // --- 7. Animation: revolution and rotation of planets ---
-        let clock = new THREE.Clock();
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            const delta = clock.getDelta();
-            const elapsedTime = performance.now() / 1000; // seconds
-
-            // Rotate planets around their own axis
-            planetMeshes.forEach(planet => {
-                planet.rotation.y += 0.005;
-            });
-            sun.rotation.y += 0.001;
-
-            // Revolution around the sun
-            planetMeshes.forEach(planet => {
-                const data = planet.userData;
-                // increment angle based on speed
-                data.angle += data.speed * 0.008; // speed factor
-                const r = data.radius;
-                planet.position.x = Math.cos(data.angle) * r;
-                planet.position.z = Math.sin(data.angle) * r;
-                // slight vertical offset for some? no
-            });
-
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        // --- 8. Window resize ---
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // --- 9. Additional effect: subtle movement of sunLight? already at sun.
-        // We'll update sunLight position to always match sun (which is at origin in group, but group moves/rotates)
-        // Light is attached to scene, not group, so we need to position it at sun's world position.
-        // Simpler: add light as child of sun? But light then rotates with sun? Not ideal. Keep as is: sunLight fixed at group origin? 
-        // Actually sun is at (0,0,0) in group coordinates, so world position of sun = arGroup.position. We'll update light position to arGroup.position each frame.
-        function updateLightPosition() {
-            // Call this in animate? We'll add a small update.
-            // But we need to do it after group transform. Let's modify animate:
-            // We'll override animate to include that.
-        }
-        // Better: in animate, after group transform, set light position to arGroup.position.
-        // But we cannot easily override the existing animate. Let's re-structure: we'll add a small extra function inside animate.
-        // To keep it clean, we'll just add a line inside the current animate.
-        // We'll reassign animate function to include it.
-        const originalAnimate = animate;
-        window.animate = function() {
-            originalAnimate();
-            sunLight.position.copy(arGroup.position); // sun light follows the group (sun at group origin)
-        };
-        // But we already called animate. We'll just overwrite.
-        // Better: rename.
-        // I'll just replace the animate function with one that includes the light update.
-        // Let's redefine.
-        // We'll stop the previous animate and start a new one.
-        // For simplicity, I'll rewrite the animate block completely.
-        // We'll remove the previous animate declaration and put a new one.
-        // But the code already executed up to line ~350. We'll replace from that point.
-        // We'll do a fresh start after this comment.
-        // Actually we can't redefine easily. I'll just add a new interval, but that's messy.
-        // Let's just include the light update in the existing animate by modifying it.
-        // I'll override the function reference.
-        
-        // Clean approach: stop the previous animation? Not possible. We'll just add a second animation loop? No.
-        // Let's move the light update into the existing animate function. I'll go back and edit the animate definition.
-        // Since this is a generated answer, I'll rewrite the animate part properly.
-        
-        // I'll now write the final animate block correctly.
-        // We need to ensure the light follows the group's position (sun).
-        // So inside animate, after updating planet positions (which are relative to group), we set sunLight.position to arGroup.position.
-        // That works because sun is at (0,0,0) in group.
-        
-        // I'll replace the earlier animate definition (around line 210) with the corrected version.
-        // In the final output, I'll produce the full corrected code.
-        // Let's just produce the final answer now with the corrected animate.
-        ```
-
-        // --- (continued) ---
-        // To avoid confusion, I'll provide the complete corrected code below, 
-        // but within the same script block, I'll redefine the animate function.
-        // Since we are in a module, we can just reassign.
-        
-        // Stop any previous animation? No, we'll just let the old one run but also start a new one? Not good.
-        // Better to output a clean final version without these intermediate issues.
-        
-        // I'll now produce the final answer with all corrections integrated.
-        
-        // FINAL CLEAN VERSION STARTS HERE.
-        // (The above code will be replaced by the clean final version in the actual output.)
-        
-        // However, the assistant must output the final code. I will now write the complete final HTML with all fixes.
-        
-        // I'll generate a new response with the complete file.
-        
-        // For the sake of this platform, I'll output the final answer below.
-        
-        // --- FINAL OUTPUT ---
-        // (See the complete HTML string in the final message)
+            // Update status if sensors don't fire after a while
+            setTimeout(() => {
+                if (alphaSpan.textContent === '0' && betaSpan.textContent === '0' && gammaSpan.textContent === '0') {
+                    statusDiv.innerHTML = '⚠️ No orientation data (sensors might be missing)';
+                }
+            }, 3000);
+        })();
     </script>
 </body>
 </html>
