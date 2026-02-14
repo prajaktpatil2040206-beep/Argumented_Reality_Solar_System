@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Live Camera + Sensors</title>
+    <title>AR Cube – Sensor Driven</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
             background: black;
-            color: white;
         }
         #video-bg {
             position: fixed;
@@ -22,234 +22,223 @@
             z-index: 0;
             pointer-events: none;
         }
-        #overlay {
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none; /* allow touches to pass to any UI */
+        }
+        #sensor-status {
             position: absolute;
-            top: 20px;
+            bottom: 30px;
             left: 20px;
             right: 20px;
-            bottom: 20px;
-            z-index: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            pointer-events: none; /* allow clicks to pass to button if needed */
-        }
-        #sensor-data {
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(10px);
-            padding: 20px;
-            border-radius: 24px;
-            border: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            padding: 10px 18px;
+            border-radius: 40px;
             width: fit-content;
-            max-width: 90%;
-            align-self: flex-start;
-            font-size: 16px;
-            line-height: 1.6;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.5);
-            color: #fff;
-            text-shadow: 0 2px 4px black;
-            pointer-events: auto; /* allow selection if needed */
-        }
-        #sensor-data div {
-            margin: 4px 0;
-        }
-        .badge {
-            color: #ffd966;
-            font-weight: 600;
+            margin: 0 auto;
+            z-index: 2;
+            font-size: 15px;
+            border: 1px solid rgba(255,255,255,0.2);
+            pointer-events: none;
         }
         #permission-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 3;
             background: #1e2a3a;
             color: white;
             border: 2px solid #4aa3ff;
             border-radius: 40px;
-            padding: 14px 28px;
-            font-size: 18px;
+            padding: 12px 24px;
+            font-size: 16px;
             font-weight: bold;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: none;
             cursor: pointer;
             pointer-events: auto;
-            align-self: center;
-            margin-bottom: 30px;
-            width: fit-content;
-            backdrop-filter: blur(8px);
-            background: rgba(30,40,60,0.9);
-            border: 1px solid #4aa3ff;
-        }
-        #status {
-            color: #ccc;
-            font-size: 14px;
-            margin-top: 10px;
-        }
-        .footer {
-            align-self: flex-end;
-            background: rgba(0,0,0,0.4);
-            backdrop-filter: blur(5px);
-            padding: 10px 20px;
-            border-radius: 40px;
-            font-size: 14px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.2);
-            width: fit-content;
-            margin: 0 auto;
         }
     </style>
 </head>
 <body>
     <video id="video-bg" autoplay playsinline></video>
-    
-    <div id="overlay">
-        <div id="sensor-data">
-            <div><span class="badge">📱 Orientation (degrees)</span></div>
-            <div>🔵 Alpha (heading): <span id="alpha">0</span>°</div>
-            <div>🟢 Beta (tilt front/back): <span id="beta">0</span>°</div>
-            <div>🔴 Gamma (tilt left/right): <span id="gamma">0</span>°</div>
-            <div style="margin-top:12px;"><span class="badge">⚡ Motion</span></div>
-            <div>📊 Acceleration (m/s²):</div>
-            <div>  X: <span id="accelX">0</span>, Y: <span id="accelY">0</span>, Z: <span id="accelZ">0</span></div>
-            <div>🌍 With gravity:</div>
-            <div>  X: <span id="accelGX">0</span>, Y: <span id="accelGY">0</span>, Z: <span id="accelGZ">0</span></div>
-            <div>🌀 Rotation rate (°/s):</div>
-            <div>  α: <span id="rotAlpha">0</span>, β: <span id="rotBeta">0</span>, γ: <span id="rotGamma">0</span></div>
-            <div>⏱️ Interval: <span id="interval">0</span> ms</div>
-            <div id="status">🔄 Initializing sensors...</div>
-        </div>
-        
-        <button id="permission-btn" style="display: none;">🔘 Enable Motion Sensors</button>
-        
-        <div class="footer">
-            📷 Live camera background | Sensors: gyroscope + accelerometer
-        </div>
-    </div>
+    <div id="canvas-container"></div>
+    <button id="permission-btn">🔘 Enable Motion Sensors</button>
+    <div id="sensor-status">🌀 Initializing sensors...</div>
 
-    <script>
-        (function() {
-            // Get DOM elements
-            const video = document.getElementById('video-bg');
-            const alphaSpan = document.getElementById('alpha');
-            const betaSpan = document.getElementById('beta');
-            const gammaSpan = document.getElementById('gamma');
-            const accelXSpan = document.getElementById('accelX');
-            const accelYSpan = document.getElementById('accelY');
-            const accelZSpan = document.getElementById('accelZ');
-            const accelGXSpan = document.getElementById('accelGX');
-            const accelGYSpan = document.getElementById('accelGY');
-            const accelGZSpan = document.getElementById('accelGZ');
-            const rotAlphaSpan = document.getElementById('rotAlpha');
-            const rotBetaSpan = document.getElementById('rotBeta');
-            const rotGammaSpan = document.getElementById('rotGamma');
-            const intervalSpan = document.getElementById('interval');
-            const statusDiv = document.getElementById('status');
-            const permissionBtn = document.getElementById('permission-btn');
-
-            // Camera stream
-            async function startCamera() {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: 'environment' }, // rear camera
-                        audio: false 
-                    });
-                    video.srcObject = stream;
-                    statusDiv.innerHTML = '✅ Camera active';
-                } catch (err) {
-                    statusDiv.innerHTML = '❌ Camera access denied';
-                    console.error(err);
-                }
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js"
             }
-            startCamera();
+        }
+    </script>
 
-            // Sensor data handlers
-            function handleOrientation(event) {
-                if (event.alpha !== null) {
-                    alphaSpan.textContent = event.alpha.toFixed(1);
-                } else {
-                    alphaSpan.textContent = 'N/A';
-                }
-                if (event.beta !== null) {
-                    betaSpan.textContent = event.beta.toFixed(1);
-                } else {
-                    betaSpan.textContent = 'N/A';
-                }
-                if (event.gamma !== null) {
-                    gammaSpan.textContent = event.gamma.toFixed(1);
-                } else {
-                    gammaSpan.textContent = 'N/A';
-                }
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 1. Camera feed ---
+        const video = document.getElementById('video-bg');
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' }, // rear camera
+                    audio: false 
+                });
+                video.srcObject = stream;
+                await video.play();
+            } catch (err) {
+                document.getElementById('sensor-status').innerText = '❌ Camera access denied';
+            }
+        }
+        startCamera();
+
+        // --- 2. Three.js setup (transparent) ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = null; // transparent
+
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 0); // camera at origin
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x000000, 0); // fully transparent
+        container.appendChild(renderer.domElement);
+
+        // --- 3. Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(1, 2, 3);
+        scene.add(dirLight);
+
+        const backLight = new THREE.PointLight(0x4466aa, 0.5);
+        backLight.position.set(-2, 1, -3);
+        scene.add(backLight);
+
+        // --- 4. Create a group to hold our 3D object (so we can rotate it as a whole) ---
+        const arGroup = new THREE.Group();
+        scene.add(arGroup);
+
+        // Place the group at a fixed distance in front of the camera (2 meters away)
+        arGroup.position.set(0, 0, -2);
+
+        // --- 5. Create a 3D cube with different colors per face (so orientation is obvious) ---
+        const cubeSize = 0.8;
+        // Use an array of materials for each face
+        const colors = [
+            0xff3333, // right - red
+            0x33ff33, // left - green
+            0x3333ff, // top - blue
+            0xffff33, // bottom - yellow
+            0xff33ff, // front - magenta
+            0x33ffff  // back - cyan
+        ];
+        const materials = colors.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.2, metalness: 0.1 }));
+        const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+        const cube = new THREE.Mesh(geometry, materials);
+        arGroup.add(cube);
+
+        // Add a small sphere inside or something? Not needed.
+
+        // --- 6. Device orientation handling ---
+        let orientationAvailable = false;
+        const statusEl = document.getElementById('sensor-status');
+        const permissionBtn = document.getElementById('permission-btn');
+
+        // Target quaternion for the group (inverse of device orientation)
+        let targetQuat = new THREE.QUaternion();
+
+        function handleOrientation(event) {
+            if (event.alpha === null || event.beta === null || event.gamma === null) return;
+
+            const degToRad = Math.PI / 180;
+            const alpha = event.alpha * degToRad; // rotation around Z (compass)
+            const beta = event.beta * degToRad;   // front/back tilt
+            const gamma = event.gamma * degToRad;  // left/right tilt
+
+            // Build quaternion from device orientation.
+            // We want to rotate the object opposite to the device so it appears fixed.
+            // Common mapping: yaw (alpha) around Y, pitch (beta) around X, roll (gamma) around Z.
+            // But careful with axes: For a phone in default portrait? We'll use standard.
+            // We'll create quaternions for each axis and combine.
+            const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -alpha);
+            const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -beta);
+            const qRoll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), gamma);
+            
+            // Compose: yaw * pitch * roll (order matters)
+            const rawQuat = qYaw.clone().multiply(qPitch).multiply(qRoll);
+
+            // Smoothing with slerp
+            if (!orientationAvailable) {
+                targetQuat.copy(rawQuat);
+                orientationAvailable = true;
+                statusEl.innerText = '🟢 Sensors active – move phone to see cube rotate';
+                permissionBtn.style.display = 'none';
+            } else {
+                targetQuat.slerp(rawQuat, 0.15); // smooth factor
             }
 
-            function handleMotion(event) {
-                const accel = event.acceleration;
-                const accelG = event.accelerationIncludingGravity;
-                const rotRate = event.rotationRate;
-                const interval = event.interval;
+            // Apply inverse to the group so cube seems fixed in world
+            arGroup.quaternion.copy(targetQuat).invert();
+        }
 
-                if (accel) {
-                    accelXSpan.textContent = accel.x !== null ? accel.x.toFixed(2) : '0';
-                    accelYSpan.textContent = accel.y !== null ? accel.y.toFixed(2) : '0';
-                    accelZSpan.textContent = accel.z !== null ? accel.z.toFixed(2) : '0';
-                } else {
-                    accelXSpan.textContent = 'N/A';
-                    accelYSpan.textContent = 'N/A';
-                    accelZSpan.textContent = 'N/A';
-                }
-
-                if (accelG) {
-                    accelGXSpan.textContent = accelG.x !== null ? accelG.x.toFixed(2) : '0';
-                    accelGYSpan.textContent = accelG.y !== null ? accelG.y.toFixed(2) : '0';
-                    accelGZSpan.textContent = accelG.z !== null ? accelG.z.toFixed(2) : '0';
-                } else {
-                    accelGXSpan.textContent = 'N/A';
-                    accelGYSpan.textContent = 'N/A';
-                    accelGZSpan.textContent = 'N/A';
-                }
-
-                if (rotRate) {
-                    rotAlphaSpan.textContent = rotRate.alpha !== null ? rotRate.alpha.toFixed(2) : '0';
-                    rotBetaSpan.textContent = rotRate.beta !== null ? rotRate.beta.toFixed(2) : '0';
-                    rotGammaSpan.textContent = rotRate.gamma !== null ? rotRate.gamma.toFixed(2) : '0';
-                } else {
-                    rotAlphaSpan.textContent = 'N/A';
-                    rotBetaSpan.textContent = 'N/A';
-                    rotGammaSpan.textContent = 'N/A';
-                }
-
-                intervalSpan.textContent = interval ? interval.toFixed(2) : '0';
-            }
-
-            // Permission handling for iOS 13+
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                // iOS requires explicit permission
-                permissionBtn.style.display = 'inline-block';
-                permissionBtn.addEventListener('click', async () => {
-                    try {
-                        const response = await DeviceOrientationEvent.requestPermission();
+        // iOS 13+ permission
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            permissionBtn.style.display = 'block';
+            permissionBtn.addEventListener('click', () => {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
                         if (response === 'granted') {
                             window.addEventListener('deviceorientation', handleOrientation);
-                            window.addEventListener('devicemotion', handleMotion);
-                            statusDiv.innerHTML = '✅ Sensors enabled';
-                            permissionBtn.style.display = 'none';
+                            statusEl.innerText = '🟢 Sensors active';
                         } else {
-                            statusDiv.innerHTML = '❌ Sensor permission denied';
+                            statusEl.innerText = '❌ Sensor permission denied';
                         }
-                    } catch (err) {
-                        statusDiv.innerHTML = '❌ Error requesting permission';
-                        console.error(err);
-                    }
-                });
-            } else {
-                // Non-iOS or older iOS — just add listeners
-                window.addEventListener('deviceorientation', handleOrientation);
-                window.addEventListener('devicemotion', handleMotion);
-                permissionBtn.style.display = 'none';
-                statusDiv.innerHTML = '✅ Sensors active';
-            }
+                    })
+                    .catch(console.error);
+            });
+        } else {
+            window.addEventListener('deviceorientation', handleOrientation);
+            permissionBtn.style.display = 'none';
+        }
 
-            // Update status if sensors don't fire after a while
-            setTimeout(() => {
-                if (alphaSpan.textContent === '0' && betaSpan.textContent === '0' && gammaSpan.textContent === '0') {
-                    statusDiv.innerHTML = '⚠️ No orientation data (sensors might be missing)';
-                }
-            }, 3000);
-        })();
+        // Fallback message if no data after 4 seconds
+        setTimeout(() => {
+            if (!orientationAvailable) {
+                statusEl.innerText = '⚠️ No orientation data (sensors missing?)';
+            }
+        }, 4000);
+
+        // --- 7. Animation loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Optional: slight rotation of cube itself for extra effect? Not needed, but could.
+            // cube.rotation.y += 0.01; // if we want self-spin, but then orientation gets messy.
+            // We'll keep cube static relative to group; group rotation handles AR.
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // --- 8. Window resize ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
